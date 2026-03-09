@@ -1,22 +1,28 @@
 services:
   sim:
-    build: .
+    build:
+      context: .
+      network: host
     image: sim_robo:humble
     container_name: sim_robo
+    network_mode: host
     environment:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
       - GAZEBO_MODEL_PATH=/workspace/src
       - ROS_DOMAIN_ID=42
+      - vblank_mode=0        # disable vsync for Mesa/AMD
+      - MESA_GLTHREAD=true   # async GL dispatch thread, reduces CPU bottleneck
     volumes:
       - .:/workspace
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
       - gazebo-cache:/root/.gazebo
     devices:
-      - /dev/dri:/dev/dri  # GPU access (AMD/Intel); remove if no GPU
-    ports:
-      - "11311:11311"  # ROS Master (if using ROS1 bridge)
-      - "7400-7500:7400-7500/udp"  # DDS Discovery and Data
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+    security_opt:
+      - seccomp:unconfined
     stdin_open: true
     tty: true
 
