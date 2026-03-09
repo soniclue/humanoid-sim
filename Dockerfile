@@ -19,8 +19,6 @@ RUN apt-get update && apt-get install -y \
     libgl1-mesa-dri \
     libgl1-mesa-glx \
     mesa-utils \
-    xvfb \
-    x11-utils \
  && rm -rf /var/lib/apt/lists/*
 
 # Install uv for Python package management
