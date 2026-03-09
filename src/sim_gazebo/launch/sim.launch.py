@@ -45,17 +45,19 @@ ROBOT_CONFIGS = {
 }
 
 # Topics recorded when record:=true
-RECORD_TOPICS = [
+RECORD_TOPICS_BASE = [
     '/scan',
     '/points',
     '/imu/data',
-    '/camera/image_raw',
-    '/camera/depth/image_raw',
-    '/camera/depth/points',
     '/joint_states',
     '/tf',
     '/tf_static',
     '/clock',
+]
+RECORD_TOPICS_CAMERAS = [
+    '/camera/image_raw',
+    '/camera/depth/image_raw',
+    '/camera/depth/points',
 ]
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -66,6 +68,7 @@ def launch_setup(context, *args, **kwargs):
     use_sim_time_bool = use_sim_time.lower() == 'true'
     gui            = LaunchConfiguration('gui').perform(context)
     paused         = LaunchConfiguration('paused').perform(context)
+    cameras        = LaunchConfiguration('cameras').perform(context).lower() == 'true'
     record         = LaunchConfiguration('record').perform(context).lower() == 'true'
     bag_path       = LaunchConfiguration('bag_path').perform(context)
     bag_format     = LaunchConfiguration('bag_format').perform(context)
@@ -85,7 +88,8 @@ def launch_setup(context, *args, **kwargs):
     gazebo_ros_pkg = get_package_share_directory('gazebo_ros')
 
     robot_description_content = ParameterValue(
-        Command([FindExecutable(name='xacro'), ' ', xacro_file]),
+        Command([FindExecutable(name='xacro'), ' ', xacro_file,
+                 ' enable_cameras:=', 'true' if cameras else 'false']),
         value_type=str,
     )
     robot_description = {'robot_description': robot_description_content}
@@ -144,8 +148,9 @@ def launch_setup(context, *args, **kwargs):
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             bag_path = f'/workspace/bags/{robot}_{timestamp}'
         os.makedirs('/workspace/bags', exist_ok=True)
+        topics = RECORD_TOPICS_BASE + (RECORD_TOPICS_CAMERAS if cameras else [])
         bag_node = ExecuteProcess(
-            cmd=['ros2', 'bag', 'record', '-s', bag_format, '-o', bag_path] + RECORD_TOPICS,
+            cmd=['ros2', 'bag', 'record', '-s', bag_format, '-o', bag_path] + topics,
             output='screen',
         )
         actions.append(bag_node)
@@ -163,9 +168,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('use_sim_time', default_value='true',
                               description='Use Gazebo simulation clock'),
-        DeclareLaunchArgument('gui',    default_value='true',
+        DeclareLaunchArgument('gui',     default_value='true',
                               description='Launch Gazebo GUI (gzclient)'),
-        DeclareLaunchArgument('paused', default_value='false',
+        DeclareLaunchArgument('cameras', default_value='true',
+                              description='Enable camera sensors (RGB + depth); disable to save CPU'),
+        DeclareLaunchArgument('paused',  default_value='false',
                               description='Start Gazebo paused'),
         DeclareLaunchArgument('record', default_value='false',
                               description='Record sensor topics to a rosbag'),

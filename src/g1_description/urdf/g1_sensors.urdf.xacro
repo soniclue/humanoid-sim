@@ -2,6 +2,9 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro"
        name="g1_23dof_with_sensors">
 
+  <!-- Set cameras:=false at launch to skip camera sensors (saves CPU on slow hardware) -->
+  <xacro:arg name="enable_cameras" default="true"/>
+
   <!--
     Include the Unitree G1 base URDF.
     Mesh paths have been fixed to use package:// URIs via sed post-processing
@@ -144,10 +147,10 @@
   </gazebo>
 
   <!-- ================================================================
-       SENSOR 3: RGB Camera → /camera/image_raw
-       Uses d435_link already defined in the Unitree base URDF
-       (front face of torso, near head level).
+       SENSOR 3 + 3b: Cameras (disabled when enable_cameras:=false)
        ================================================================ -->
+  <xacro:if value="$(arg enable_cameras)">
+
   <gazebo reference="d435_link">
     <sensor name="rgb_camera" type="camera">
       <always_on>true</always_on>
@@ -213,6 +216,8 @@
       </plugin>
     </sensor>
   </gazebo>
+
+  </xacro:if>
 
   <!-- ================================================================
        SENSOR 4: IMU → /imu/data (sensor_msgs/Imu)

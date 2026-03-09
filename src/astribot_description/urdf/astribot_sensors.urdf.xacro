@@ -18,6 +18,9 @@
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="astribot_s1">
 
+  <!-- Set cameras:=false at launch to skip camera sensors (saves CPU on slow hardware) -->
+  <xacro:arg name="enable_cameras" default="true"/>
+
   <!-- Base URDF (copied from fiveages-sim/robot_descriptions with mesh paths fixed) -->
   <xacro:include filename="$(find astribot_description)/urdf/astribot_s1_base.urdf"/>
 
@@ -176,7 +179,9 @@
     </sensor>
   </gazebo>
 
-  <!-- RGB Camera → /camera/image_raw -->
+  <!-- RGB Camera + Depth Camera (disabled when enable_cameras:=false) -->
+  <xacro:if value="$(arg enable_cameras)">
+
   <gazebo reference="d435_link">
     <sensor name="d435_camera" type="camera">
       <always_on>true</always_on>
@@ -198,7 +203,6 @@
     </sensor>
   </gazebo>
 
-  <!-- Depth Camera → /camera/depth/image_raw + /camera/depth/points -->
   <gazebo reference="d435_link">
     <sensor name="d435_depth" type="depth">
       <always_on>true</always_on>
@@ -209,7 +213,7 @@
         <image>
           <width>640</width>
           <height>480</height>
-          <format>R32F</format>
+          <format>R8G8B8</format>
         </image>
         <clip><near>0.1</near><far>10.0</far></clip>
       </camera>
@@ -224,6 +228,8 @@
       </plugin>
     </sensor>
   </gazebo>
+
+  </xacro:if>
 
   <!-- IMU → /imu/data -->
   <gazebo reference="imu_link">
