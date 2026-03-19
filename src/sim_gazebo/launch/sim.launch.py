@@ -6,9 +6,10 @@ Usage:
     ros2 launch sim_gazebo sim.launch.py robot:=g1
     ros2 launch sim_gazebo sim.launch.py robot:=astribot
     ros2 launch sim_gazebo sim.launch.py robot:=g1 gui:=false
+    ros2 launch sim_gazebo sim.launch.py robot:=g1 rviz:=true
     ros2 launch sim_gazebo sim.launch.py robot:=astribot paused:=true
     ros2 launch sim_gazebo sim.launch.py robot:=astribot rosbag:=true
-    ros2 launch sim_gazebo sim.launch.py rosbag:=true bag_path:=/workspace/bags/my_run
+    ros2 launch sim_gazebo sim.launch.py rosbag:=true bag_path:=./bags/my_run
 
 Adding a new robot:
     1. Create src/<name>_description/ with urdf/<name>_sensors.urdf.xacro
@@ -23,7 +24,7 @@ from datetime import datetime
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, OpaqueFunction, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
@@ -37,6 +38,7 @@ ROBOT_CONFIGS = {
         'xacro_file':      'urdf/g1_sensors.urdf.xacro',
         'entity_name':     'g1_robot',
         'spawn_z':         '0.0',   # world_to_pelvis joint in XACRO offsets to z=0.79
+        'rviz_config':     'rviz/g1_display.rviz',
     },
     'astribot': {
         'description_pkg': 'astribot_description',
@@ -68,6 +70,7 @@ def launch_setup(context, *args, **kwargs):
     use_sim_time_bool = use_sim_time.lower() == 'true'
     gui            = LaunchConfiguration('gui').perform(context)
     paused         = LaunchConfiguration('paused').perform(context)
+    rviz           = LaunchConfiguration('rviz').perform(context).lower() == 'true'
     rosbag         = LaunchConfiguration('rosbag').perform(context).lower() == 'true'
     bag_path       = LaunchConfiguration('bag_path').perform(context)
     bag_format     = LaunchConfiguration('bag_format').perform(context)
@@ -93,10 +96,17 @@ def launch_setup(context, *args, **kwargs):
     urdf_result = subprocess.run(
         ['xacro', xacro_file], capture_output=True, text=True, check=True
     )
+    # Replace package:// URIs with file:// absolute paths so Gazebo Classic can
+    # load meshes. Gazebo converts package:// → model:// during URDF→SDF but
+    # then fails to resolve model://<pkg> because ROS packages have no model.config.
+    urdf_content = urdf_result.stdout.replace(
+        f'package://{cfg["description_pkg"]}/',
+        f'file://{desc_pkg}/',
+    )
     urdf_tmp = tempfile.NamedTemporaryFile(
         mode='w', suffix='.urdf', delete=False, prefix=f'{robot}_'
     )
-    urdf_tmp.write(urdf_result.stdout)
+    urdf_tmp.write(urdf_content)
     urdf_tmp.flush()
     urdf_tmp_path = urdf_tmp.name
 
@@ -128,16 +138,7 @@ def launch_setup(context, *args, **kwargs):
         parameters=[robot_description, {'use_sim_time': use_sim_time_bool}],
     )
 
-    # 3. joint_state_publisher
-    jsp_node = Node(
-        package='joint_state_publisher',
-        executable='joint_state_publisher',
-        name='joint_state_publisher',
-        output='screen',
-        parameters=[{'use_sim_time': use_sim_time_bool}, {'rate': 50}],
-    )
-
-    # 4. Spawn robot — use -file (pre-written URDF) instead of -topic so
+    # 3. Spawn robot — use -file (pre-written URDF) instead of -topic so
     # Gazebo only parses the model once and never reacts to later republishes.
     spawn_node = Node(
         package='gazebo_ros',
@@ -153,19 +154,34 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
-    actions = [gazebo, rsp_node, jsp_node, spawn_node]
+    actions = [gazebo, rsp_node, spawn_node]
 
-    # 5. Optional bag recording
+    # 5. Optional RViz2
+    if rviz:
+        rviz_config_rel = cfg.get('rviz_config')
+        rviz_args = ['-d', os.path.join(desc_pkg, rviz_config_rel)] if rviz_config_rel else []
+        rviz_node = Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            output='screen',
+            arguments=rviz_args,
+        )
+        actions.append(rviz_node)
+
+    # 6. Optional bag recording
     if rosbag:
         if not bag_path:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            bag_path = f'/workspace/bags/{robot}_{timestamp}'
-        os.makedirs('/workspace/bags', exist_ok=True)
+            bag_path = f'./bags/{robot}_{timestamp}'
+        os.makedirs('./bags', exist_ok=True)
         bag_node = ExecuteProcess(
             cmd=['ros2', 'bag', 'record', '-s', bag_format, '-o', bag_path] + RECORD_TOPICS,
             output='screen',
         )
-        actions.append(bag_node)
+        # Delay recording by 15 s so Gazebo can finish initializing before
+        # high-bandwidth topic subscriptions saturate the CPU/disk.
+        actions.append(TimerAction(period=15.0, actions=[bag_node]))
         print(f'[sim_gazebo] Recording bag to: {bag_path}')
 
     return actions
@@ -184,12 +200,14 @@ def generate_launch_description():
                               description='Launch Gazebo GUI (gzclient)'),
         DeclareLaunchArgument('paused', default_value='false',
                               description='Start Gazebo paused'),
+        DeclareLaunchArgument('rviz',   default_value='false',
+                              description='Launch RViz2 (uses per-robot config if available)'),
         # NOTE: named 'rosbag' (not 'record') to avoid collision with Gazebo's
         # own --record flag which gzserver would pick up and crash with exit 255.
         DeclareLaunchArgument('rosbag', default_value='false',
                               description='Record sensor topics to a rosbag'),
         DeclareLaunchArgument('bag_path', default_value='',
-                              description='Output path for the bag (default: /workspace/bags/<robot>_<timestamp>)'),
+                              description='Output path for the bag (default: ./bags/<robot>_<timestamp>)'),
         DeclareLaunchArgument('bag_format', default_value='mcap',
                               description='Bag storage format: mcap or sqlite3'),
         OpaqueFunction(function=launch_setup),
