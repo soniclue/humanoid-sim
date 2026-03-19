@@ -108,19 +108,7 @@ def generate_launch_description():
         ],
     )
 
-    # 3. joint_state_publisher — publishes all 23 DOF at zero position
-    joint_state_publisher_node = Node(
-        package='joint_state_publisher',
-        executable='joint_state_publisher',
-        name='joint_state_publisher',
-        output='screen',
-        parameters=[
-            {'use_sim_time': use_sim_time},
-            {'rate': 50},
-        ],
-    )
-
-    # 4. Spawn the robot — use -file instead of -topic so Gazebo only
+    # 3. Spawn the robot — use -file instead of -topic so Gazebo only
     #    parses the URDF once and ignores subsequent /robot_description republishes.
     spawn_entity_node = Node(
         package='gazebo_ros',
@@ -157,7 +145,6 @@ def generate_launch_description():
         declare_paused,
         gazebo,
         robot_state_publisher_node,
-        joint_state_publisher_node,
         spawn_entity_node,
         rviz_node,
     ])
