@@ -60,10 +60,19 @@ def generate_launch_description():
     urdf_result = subprocess.run(
         ['xacro', xacro_file], capture_output=True, text=True, check=True
     )
+    # Replace package:// URIs with file:// absolute paths so Gazebo Classic can
+    # load the STL meshes.  Gazebo converts package:// → model:// during URDF→SDF
+    # conversion but then fails to resolve model://g1_description because the
+    # package directory has no model.config (it is a ROS package, not a Gazebo
+    # model).  Absolute file:// URIs bypass the model database entirely.
+    urdf_content = urdf_result.stdout.replace(
+        'package://g1_description/',
+        f'file://{g1_description_pkg}/',
+    )
     urdf_tmp = tempfile.NamedTemporaryFile(
         mode='w', suffix='.urdf', delete=False, prefix='g1_'
     )
-    urdf_tmp.write(urdf_result.stdout)
+    urdf_tmp.write(urdf_content)
     urdf_tmp.flush()
     urdf_tmp_path = urdf_tmp.name
 
@@ -131,6 +140,17 @@ def generate_launch_description():
         ],
     )
 
+    rviz_config_file = os.path.join(
+        g1_description_pkg, 'rviz', 'g1_display.rviz'
+    )
+    rviz_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        output='screen',
+        arguments=['-d', rviz_config_file],
+    )
+
     return LaunchDescription([
         declare_use_sim_time,
         declare_gui,
@@ -139,4 +159,5 @@ def generate_launch_description():
         robot_state_publisher_node,
         joint_state_publisher_node,
         spawn_entity_node,
+        rviz_node,
     ])
