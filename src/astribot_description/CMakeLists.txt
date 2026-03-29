@@ -3,7 +3,7 @@ project(astribot_description)
 
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY urdf meshes launch
+install(DIRECTORY urdf meshes launch rviz
   DESTINATION share/${PROJECT_NAME}
 )
 

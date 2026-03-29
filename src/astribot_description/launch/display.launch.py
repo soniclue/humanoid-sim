@@ -27,14 +27,15 @@ def generate_launch_description():
             output='screen',
         ),
         Node(
-            package='joint_state_publisher',
-            executable='joint_state_publisher',
+            package='joint_state_publisher_gui',
+            executable='joint_state_publisher_gui',
+            name='joint_state_publisher',
             output='screen',
         ),
         Node(
             package='rviz2',
             executable='rviz2',
             output='screen',
-            arguments=['-d', rviz_config] if os.path.exists(rviz_config) else [],
+            arguments=['-d', rviz_config],
         ),
     ])

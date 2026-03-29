@@ -45,6 +45,7 @@ ROBOT_CONFIGS = {
         'xacro_file':      'urdf/astribot_sensors.urdf.xacro',
         'entity_name':     'astribot_robot',
         'spawn_z':         '0.0',   # world_to_base_link joint in XACRO handles height
+        'rviz_config':     'rviz/astribot_display.rviz',
     },
 }
 
@@ -166,6 +167,7 @@ def launch_setup(context, *args, **kwargs):
             name='rviz2',
             output='screen',
             arguments=rviz_args,
+            parameters=[{'use_sim_time': use_sim_time_bool}],
         )
         actions.append(rviz_node)
 
@@ -178,6 +180,10 @@ def launch_setup(context, *args, **kwargs):
         bag_node = ExecuteProcess(
             cmd=['ros2', 'bag', 'record', '-s', bag_format, '-o', bag_path] + RECORD_TOPICS,
             output='screen',
+            # Give the recorder time to flush and write the final index/footer
+            # before escalating to SIGKILL. Without this, mcap files are left
+            # truncated (missing footer) and sqlite3 journals are not committed.
+            sigterm_timeout='30',
         )
         # Delay recording by 15 s so Gazebo can finish initializing before
         # high-bandwidth topic subscriptions saturate the CPU/disk.
